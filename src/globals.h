@@ -22,12 +22,12 @@ extern double alpha, beta, _gamma, delta;
 extern double via_cost;
 extern double gcell_cost_max;
 // GridMap
-extern size_t routing_area_x, routing_area_y, routing_area_width, routing_area_height;
-extern size_t grid_width, grid_height;
-extern size_t routing_area_gwidth, routing_area_gheight;
+extern int routing_area_x, routing_area_y, routing_area_width, routing_area_height;
+extern int grid_width, grid_height;
+extern int routing_area_gwidth, routing_area_gheight;
 extern std::array<Chip, 2> chips;
 // GCell
-extern std::array<std::vector<std::vector<size_t>>, 4> edge_capacities; 
+extern std::array<std::vector<std::vector<int>>, 4> edge_capacities; 
 // extern std::vector<std::vector<double>> layer1_costs;
 // extern std::vector<std::vector<double>> layer2_costs;
 extern std::array<std::vector<std::vector<double>>, 2> layer_costs;
