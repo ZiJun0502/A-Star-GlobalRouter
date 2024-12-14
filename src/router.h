@@ -30,12 +30,11 @@ struct RouteNode {
     bool operator>(const RouteNode& other) const {
         return f_cost > other.f_cost;
     }
+    bool operator<(const RouteNode& other) const { return f_cost < other.f_cost; }
 };
-struct RouteNodeComparator {
-    bool operator()(const RouteNode& lhs, const RouteNode& rhs) const {
-        if (lhs.x != rhs.x) return lhs.x < rhs.x;
-        if (lhs.y != rhs.y) return lhs.y < rhs.y;
-        return lhs.layer < rhs.layer;
+struct CompareRouteNode {
+    bool operator()(const RouteNode* lhs, const RouteNode* rhs) const {
+        return lhs->f_cost < rhs->f_cost;
     }
 };
 
@@ -61,22 +60,25 @@ private:
                                      const std::pair<size_t, size_t>& end);
     
     // Cost calculation methods
-    double calculate_wire_length(const std::vector<RouteEdge>& path);
-    double calculate_overflow(const std::vector<RouteEdge>& path);
-    double calculate_via_count(const std::vector<RouteEdge>& path);
+    double calculate_cost(const std::vector<std::vector<RouteEdge>>& routed_net);
+    double calculate_wire_length_cost(const std::vector<RouteEdge>& path);
+    double calculate_overflow_cost();
+    double calculate_gcell_cost(const std::vector<RouteEdge>& path);
+    double calculate_via_cost(const std::vector<RouteEdge>& path);
     
     // Grid-related methods
-    void initialize_grid_costs();
     bool is_valid_move(size_t x, size_t y, size_t layer);
-    
+    int get_direction(size_t from_x, size_t from_y, size_t to_x, size_t to_y);
+    int get_opposite_direction(int dir);
     // Heuristic calculation
     double calculate_heuristic(size_t x1, size_t y1, size_t x2, size_t y2);
-    
+    double calculate_g_cost(size_t from_x, size_t from_y, size_t from_layer, size_t to_x, size_t to_y, size_t to_layer);
+    double recorded_total_cost;
+    std::vector<double> recorded_costs;
     // Tracking routed nets and their edges
     std::vector<std::vector<RouteEdge>> routed_nets;
-    
     // Grid tracking for overflow calculation
-    std::vector<std::vector<std::vector<size_t>>> layer_net_count;
+    std::array<std::vector<std::vector<size_t>>, 4> layer_net_count;
 };
 
 #endif // ROUTER_H

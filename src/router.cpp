@@ -1,16 +1,20 @@
 #include "router.h"
 
 Router::Router() {
-    // Initialize net count tracking for each layer and grid cell
-    layer_net_count.resize(2, 
-        std::vector<std::vector<size_t>>(routing_area_gheight, 
-            std::vector<size_t>(routing_area_gwidth, 0)));
+    layer_net_count[0] = std::vector<std::vector<size_t>>(routing_area_gheight, std::vector<size_t>(routing_area_gwidth, 0));
+    layer_net_count[1] = std::vector<std::vector<size_t>>(routing_area_gheight, std::vector<size_t>(routing_area_gwidth, 0));
+    layer_net_count[2] = std::vector<std::vector<size_t>>(routing_area_gheight, std::vector<size_t>(routing_area_gwidth, 0));
+    layer_net_count[3] = std::vector<std::vector<size_t>>(routing_area_gheight, std::vector<size_t>(routing_area_gwidth, 0));
+    // for (int i = 0 ; i < routing_area_gheight ; i++) {
+    //     for (int j = 0 ; j < routing_area_gwidth ; j++) {
+    //         printf("left: %lu, bottom: %lu\n", edge_capacities[LEFT][i][j], edge_capacities[BOTTOM][i][j]);
+    //     }
+        // printf("\n");
+    // }
 }
 
-bool Router::route_nets() {
-    // Initialize grid costs
-    initialize_grid_costs();
 
+bool Router::route_nets() {
     // Route from each bump of chip[0] to each bump of chip[1]
     for (size_t i = 1; i < chips[0].bumps.size(); ++i) {
         std::pair<size_t, size_t> start = {chips[0].x + chips[0].bumps[i].first, chips[0].y + chips[0].bumps[i].second};
@@ -25,6 +29,14 @@ bool Router::route_nets() {
             return false;
         }
     }
+    double final_cost = calculate_cost(routed_nets);
+    // printf("rec net cost: %f list: ", recorded_total_cost);
+    // for (double x: recorded_costs) {
+    //     printf("%f ", x);
+    // }
+    // printf("\n");
+
+    // std::cout << "Final Cost: " << final_cost << "\n";
 
     return true;
 }
@@ -38,26 +50,32 @@ std::vector<RouteEdge> Router::find_path(const std::pair<size_t, size_t>& start,
     size_t end_y = static_cast<size_t>(end.second / grid_height);
     // std::cout << start_x << ' ' << start_y << ' ' << end_x << ' ' << end_y << '\n';
     // Priority queue for A* search
-    std::priority_queue<RouteNode*, std::vector<RouteNode*>, 
-                        std::greater<RouteNode*>> open_list;
+    std::set<RouteNode*, CompareRouteNode> open_list;
+    std::unordered_map<std::tuple<size_t, size_t, size_t>, RouteNode*> allocated_map;
+    std::unordered_set<std::tuple<size_t, size_t, size_t>> open_set;
     std::unordered_set<std::tuple<size_t, size_t, size_t>> closed_set;
     std::unordered_map<std::tuple<size_t, size_t, size_t>, double> g_hash_map;
-    g_hash_map[std::make_tuple(start_x, start_y, 0)] = 0;
-    // Initial nodes for both layers
-    RouteNode* start_node_m1 = new RouteNode(start_x, start_y, 0, 0, 0, 
+    // Initial starting node
+    auto start_tup = std::make_tuple(start_x, start_y, 0);
+    g_hash_map[start_tup] = 0;
+    RouteNode* start_node = new RouteNode(start_x, start_y, 0, 0, 0, 
         calculate_heuristic(start_x, start_y, end_x, end_y));
+    allocated_map[start_tup] = start_node;
     // RouteNode* start_node_m2 = new RouteNode(start_x, start_y, 1, 0, 0, 
     //     calculate_heuristic(start_x, start_y, end_x, end_y));
 
-    open_list.push(start_node_m1);
+    open_list.insert(start_node);
+    open_set.insert(std::make_tuple(start_x, start_y, 0));
     // open_list.push(start_node_m2);
     // std::cout << "Ending coordinate: ";
     // std::cout << end_x << ' ' << end_y << '\n';
     const int dx[] = {1, -1, 0, 0};
     const int dy[] = {0, 0, 1, -1};
     while (!open_list.empty()) {
-        RouteNode* current = open_list.top();
-        open_list.pop();
+        RouteNode* current = *open_list.begin();
+        open_list.erase(current);
+        auto current_tup = std::make_tuple(current->x, current->y, current->layer);
+        open_set.erase(current_tup);
 
         // Check if reached goal
         // getchar();
@@ -84,9 +102,14 @@ std::vector<RouteEdge> Router::find_path(const std::pair<size_t, size_t>& start,
                 edge.end_y = trace->y;
                 edge.layer = trace->layer;
                 edge.is_via = (trace->layer != trace->parent->layer);
+                int dir = get_direction(edge.start_x, edge.start_y, trace->x, trace->y);
+                layer_net_count[dir][trace->y][trace->x]++;
+                layer_net_count[get_opposite_direction(dir)][trace->parent->y][trace->parent->x]++;
                 path.push_back(edge);
                 trace = trace->parent;
             }
+            recorded_total_cost += current->g_cost;
+            recorded_costs.push_back(current->g_cost);
             std::reverse(path.begin(), path.end());
             return path;
         }
@@ -94,44 +117,37 @@ std::vector<RouteEdge> Router::find_path(const std::pair<size_t, size_t>& start,
         // Mark as visited
         closed_set.insert(std::make_tuple(current->x, current->y, current->layer));
 
-
+        #pragma GCC unroll
         for (int i = 0; i < 4; ++i) {
             size_t new_x = current->x + dx[i];
             size_t new_y = current->y + dy[i];
 
             // Check if move is valid
             if (!is_valid_move(new_x, new_y, current->layer)) continue;
-            auto neighbor_tup = std::make_tuple(new_x, new_y, current->layer);
+            bool target_layer = (dy[i] == 0);
+            auto neighbor_tup = std::make_tuple(new_x, new_y, target_layer);
             // Check if already in closed set
             if (closed_set.find(neighbor_tup) != closed_set.end()) 
                 continue;
 
             // M1: vertical, M2: horizontal
-            bool target_layer = (dy[i] == 0);
-
-            // Calculate costs
-            double move_cost = 0, via_cost = 0, g_cost = 0;
-            if (target_layer) {
-                // M2
-                move_cost = layer2_costs[new_y][new_x];
-            } else {
-                // M1
-                move_cost = layer1_costs[new_y][new_x];
-            }
-            // Add via
-            if (current->layer != target_layer) {
-                via_cost = (layer1_costs[current->y][current->x] + layer2_costs[current->y][current->x]) / 2;
-            }
-            g_cost = current->g_cost + delta * via_cost + _gamma * move_cost;
+            double g_cost = g_hash_map[current_tup] + calculate_g_cost(current->x, current->y, current->layer, new_x, new_y, target_layer);
             double h_cost = calculate_heuristic(new_x, new_y, end_x, end_y);
             double f_cost = g_cost + h_cost;
             if (g_hash_map.find(neighbor_tup) == g_hash_map.end() || g_cost < g_hash_map[neighbor_tup]) {
-                // printf("new_x: %lu, new_y: %lu, g_cost: %f, h_cost: %f, f_cost: %f\n", new_x, new_y, g_cost, h_cost, f_cost);
                 // Create new node
                 g_hash_map[neighbor_tup] = g_cost;
-                RouteNode* neighbor = new RouteNode(new_x, new_y, target_layer, 
-                                                    f_cost, g_cost, h_cost, current);
-                open_list.push(neighbor);
+                if (open_set.find(neighbor_tup) == open_set.end()) {
+                    RouteNode* neighbor = new RouteNode(new_x, new_y, target_layer, 
+                                                        f_cost, g_cost, h_cost, current);
+                    if (allocated_map.find(neighbor_tup) != allocated_map.end()) {
+                        RouteNode* neighbor_old = allocated_map[neighbor_tup];
+                        allocated_map[neighbor_tup] = neighbor;
+                        delete neighbor_old;
+                        open_list.erase(neighbor_old);
+                    }
+                    open_list.insert(neighbor);
+                }
             }
         }
     }
@@ -139,27 +155,60 @@ std::vector<RouteEdge> Router::find_path(const std::pair<size_t, size_t>& start,
     // No path found
     return {};
 }
-
+inline int Router::get_opposite_direction(int dir) {
+    switch (dir) {
+        case 0:
+            return 1;
+        case 1:
+            return 0;
+        case 2:
+            return 3;
+        case 3:
+            return 2;
+    }
+    return -1;
+}
+inline int Router::get_direction(size_t from_x, size_t from_y, size_t to_x, size_t to_y) {
+    // 0: left, 
+    // 1: right, 
+    // 2: bottom
+    // 3: up,
+    if (from_x < to_x) {
+        return LEFT;
+    } else if (from_x > to_x) {
+        return RIGHT;
+    } else if (from_y < to_y) {
+        return BOTTOM;
+    } else {
+        return UP;
+    }
+    return -1;
+}
 inline bool Router::is_valid_move(size_t x, size_t y, size_t layer) {
     // Check grid bounds
     return !(x >= routing_area_gwidth || y >= routing_area_gheight);
 }
 
-double Router::calculate_heuristic(size_t x1, size_t y1, size_t x2, size_t y2) {
+inline double Router::calculate_heuristic(size_t x1, size_t y1, size_t x2, size_t y2) {
     // Manhattan distance
     return std::abs(static_cast<int>(x1) - static_cast<int>(x2)) + 
            std::abs(static_cast<int>(y1) - static_cast<int>(y2));
 }
-
-void Router::initialize_grid_costs() {
-    // Reset net counts
-    for (auto& layer : layer_net_count) {
-        for (auto& row : layer) {
-            std::fill(row.begin(), row.end(), 0);
-        }
-    }
+inline double Router::calculate_g_cost(size_t from_x, size_t from_y, size_t from_layer, size_t to_x, size_t to_y, size_t to_layer) {
+    int dir = get_direction(from_x, from_y, to_x, to_y);
+    double wire_len = 0.0, move_cost = 0.0, net_via_cost = 0.0, ov_cost = 0.0;
+    wire_len = (dir == LEFT || dir == RIGHT) ? grid_width : grid_height;
+    move_cost = (from_layer != to_layer) ? (layer_costs[from_layer][from_y][from_x] + layer_costs[to_layer][from_y][from_x]) / 2 
+                                                            :layer_costs[from_layer][from_y][from_x];
+    net_via_cost = (from_layer != to_layer) * via_cost;
+    ov_cost = (layer_net_count[dir][to_y][to_x] > edge_capacities[dir][to_y][to_x]) ?
+        gcell_cost_max : 0;
+        // 0.5 * std::max((long) layer_net_count[dir][to_y][to_x] - (long) edge_capacities[dir][to_y][to_x], 0L) * gcell_cost_max +
+        // 0.5 * std::max((long) layer_net_count[get_opposite_direction(dir)][to_y][to_x] - (long) edge_capacities[get_opposite_direction(dir)][to_y][to_x], 0L) * gcell_cost_max;
+    double g_cost = alpha * wire_len + beta * ov_cost +  _gamma * move_cost + delta * net_via_cost;
+    // printf("%f ", g_cost);
+    return g_cost;
 }
-
 void Router::output_routing_results(std::ofstream& output_file) {
     int i = 0;
     for (const auto& net : routed_nets) {
@@ -178,62 +227,82 @@ void Router::output_routing_results(std::ofstream& output_file) {
         output_file << ".end" << std::endl;
     }
 }
-
-double Router::calculate_wire_length(const std::vector<RouteEdge>& path) {
+double Router::calculate_cost(const std::vector<std::vector<RouteEdge>>& routed_nets) {
+    double wl = 0.0, ov = 0.0, gc = 0.0, via = 0.0;
+    std::vector<double> real_costs;
+    for (const auto& path: routed_nets) {
+        double wlc = calculate_wire_length_cost(path);
+        double gcc = calculate_gcell_cost(path);
+        double viac = calculate_via_cost(path);
+        wl += wlc;
+        gc += gcc;
+        via += viac;
+        // std::cout << "Wire Length Cost (wl): " << wlc << "\n";
+        // std::cout << "GCell Cost (gc): " << gcc << "\n";
+        // std::cout << "Via Cost (via): " << viac << "\n";
+        real_costs.push_back(wlc+gcc+viac);
+    }
+    ov = calculate_overflow_cost(); 
+    double final_cost = alpha * wl + beta * ov + _gamma * gc + delta * via;
+    // Print all values
+    // std::cout << "Wire Length Cost (wl): " << wl << "\n";
+    // std::cout << "Overflow Cost (ov): " << ov << "\n";
+    // std::cout << "GCell Cost (gc): " << gc << "\n";
+    // std::cout << "Via Cost (via): " << via << "\n";
+    // std::cout << "Final Cost: " << final_cost << "\n";
+    // printf("real net cost: %f, list: ", final_cost);
+    // for (double x : real_costs) {
+        // printf("%f ", x);
+    // }
+    // printf("\n");
+    return final_cost;
+}
+double Router::calculate_wire_length_cost(const std::vector<RouteEdge>& path) {
     double total_length = 0.0;
     for (const auto& edge : path) {
-        total_length += std::sqrt(
-            std::pow(edge.end_x - edge.start_x, 2) + 
-            std::pow(edge.end_y - edge.start_y, 2)
-        );
+        total_length += 
+            std::abs((long) edge.end_x - (long) edge.start_x) * grid_width + 
+            std::abs((long) edge.end_y - (long) edge.start_y) * grid_height;
     }
     return total_length;
 }
 
-double Router::calculate_overflow(const std::vector<RouteEdge>& path) {
-    // Reset net counts
-    for (auto& layer : layer_net_count) {
-        for (auto& row : layer) {
-            std::fill(row.begin(), row.end(), 0);
-        }
-    }
-
-    // Count nets on each edge
-    double max_cell_cost = 0.0;
-    for (const auto& edge : path) {
-        // Update net count and track max cell cost
-        layer_net_count[edge.layer][edge.end_y][edge.end_x]++;
-        
-        // Determine max cell cost based on initial grid configuration
-        max_cell_cost = std::max(max_cell_cost, 
-            edge.layer == 0 ? layer1_gcells[edge.end_y][edge.end_x].cost : 
-                              layer2_gcells[edge.end_y][edge.end_x].cost);
-    }
-
+double Router::calculate_overflow_cost() {
     // Calculate overflow
     double total_overflow = 0.0;
-    for (size_t layer = 0; layer < 2; ++layer) {
-        for (size_t y = 0; y < routing_area_gheight; ++y) {
-            for (size_t x = 0; x < routing_area_gwidth; ++x) {
-                // Determine edge capacity
-                size_t edge_capacity = layer == 0 ? 
-                    layer1_gcells[y][x].left_edge_capacity : 
-                    layer2_gcells[y][x].left_edge_capacity;
-                
-                // Calculate overflow
-                if (layer_net_count[layer][y][x] > edge_capacity) {
-                    total_overflow += 
-                        (layer_net_count[layer][y][x] - edge_capacity) * 0.5 * max_cell_cost;
+    // for (const auto& edge : path) {
+        // int dir = get_direction(edge.start_x, edge.start_y, edge.end_x, edge.end_y);
+    for (int i = 0 ; i < routing_area_gheight ; i++) {
+        for (int j = 0 ; j < routing_area_gwidth ; j++) {
+            for (int dir = 0 ; dir < 4 ; dir++) {
+                if (layer_net_count[dir][i][j] > edge_capacities[dir][i][j]) {
+                    total_overflow += 0.5 * std::max((long) layer_net_count[dir][i][j] - (long) edge_capacities[dir][i][j], 0L) * gcell_cost_max;
                 }
             }
         }
     }
-
-    return total_overflow;
+    return total_overflow / 2;
 }
 
-double Router::calculate_via_count(const std::vector<RouteEdge>& path) {
-    // Count number of vias
-    return std::count_if(path.begin(), path.end(), 
+
+double Router::calculate_gcell_cost(const std::vector<RouteEdge>& path) {
+    double total_cost = 0.0;
+    for (const auto& edge: path) {
+        // printf("(%lu, %lu)->(%lu, %lu)\n", edge.start_x, edge.start_y, edge.end_x, edge.end_y);
+        if (edge.is_via) {
+            total_cost += 
+                (layer_costs[0][edge.start_y][edge.start_x] + layer_costs[1][edge.start_y][edge.start_x]) / 2;
+        } else {
+            total_cost += layer_costs[edge.layer][edge.start_y][edge.start_x];
+        }
+    }
+    auto last_edge = path.back();
+    total_cost += layer_costs[last_edge.layer][last_edge.end_y][last_edge.end_x];
+    // std::cout << "total_cost: " << total_cost << '\n';
+    return total_cost;
+}
+double Router::calculate_via_cost(const std::vector<RouteEdge>& path) {
+    // // Count number of vias
+    return via_cost * std::count_if(path.begin(), path.end(), 
         [](const RouteEdge& edge) { return edge.is_via; });
 }

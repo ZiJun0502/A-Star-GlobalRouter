@@ -18,7 +18,7 @@ all: $(TARGET)
 
 # Link all object files to create the final binary
 $(TARGET): $(OBJS)
-	$(CXX) -pg -o $(TARGET) $(OBJS) 
+	$(CXX) -o $(TARGET) $(OBJS) 
 
 # Compile each .cpp file to the corresponding .o file in the build/ directory
 $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
