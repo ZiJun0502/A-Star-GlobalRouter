@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ "$#" -ne 1 ]; then
+    echo "Usage: ./run <testcase_folder>"
+    exit 1
+fi
+
+TESTCASE_NUMBER=$(printf "testcase%d" "$1")
+TESTCASE_FOLDER="./publicCase/$TESTCASE_NUMBER"
+
+./D2DGRter "$TESTCASE_FOLDER"/$TESTCASE_NUMBER.gmp "$TESTCASE_FOLDER"/$TESTCASE_NUMBER.gcl "$TESTCASE_FOLDER"/$TESTCASE_NUMBER.cst "$TESTCASE_FOLDER"/$TESTCASE_NUMBER.lg
