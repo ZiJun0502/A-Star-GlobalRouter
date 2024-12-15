@@ -6,13 +6,8 @@ Router::Router() {
     layer_net_count[1] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
     layer_net_count[2] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
     layer_net_count[3] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
-    // for (int i = 0 ; i < routing_area_gheight ; i++) {
-    //     for (int j = 0 ; j < routing_area_gwidth ; j++) {
-    //         printf("left: %lu, bottom: %lu\n", edge_capacities[LEFT][i][j], edge_capacities[BOTTOM][i][j]);
-    //     }
-        // printf("\n");
-    // }
-    max_run_time_per_bump = 60000 / (chips[0].bumps.size() - 1);
+    
+    max_run_time_per_bump = 6000 / (chips[0].bumps.size() - 1);
     h_scale = 1.0;
     first_net = true;
 }
@@ -37,8 +32,6 @@ bool Router::route_nets() {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_ - start_);
         std::cout << "Elapsed time: " << duration.count() << " ms" << std::endl;
     }
-    // double final_cost = calculate_cost(routed_nets);
-    // std::cout << "Final Cost: " << final_cost << "\n";
     return true;
 }
 
@@ -57,9 +50,8 @@ std::vector<RouteEdge> Router::find_path(const std::pair<int, int>& start,
     // around 500 nodes per ms for 1500*1000
     // unsigned long long traversed_count = 0;
     unsigned long long expected_traversed_count = 2 * routing_area_gheight * routing_area_gwidth;
-    // printf("max runtime: %f\n", max_run_time_per_bump);
-    // getchar();
     unsigned long long max_nodes_allowed = max_run_time_per_bump * 500;
+
     bool path_found = false;
     bool up_scaled = false, down_scaled = false;
     bool rescaled = false;
@@ -78,17 +70,15 @@ std::vector<RouteEdge> Router::find_path(const std::pair<int, int>& start,
         open_list.insert(start_node);
         open_set.insert(std::make_tuple(start_x, start_y, 0));
         unsigned long long traversed_nodes = 0;
-        // printf("(%d, %d)\n", start_x, start_y);
+        
         bool added = 0;
         while (!open_list.empty()) {
-            // traversed_count++;
             RouteNode* current = *open_list.begin();
             auto current_tup = std::make_tuple(current->x, current->y, current->layer);
 
             open_list.erase(current);
             open_set.erase(current_tup);
             if (open_set.size() != open_list.size()) {
-
                 printf("current: (%d, %d, %d)\n", current->x, current->y, current->layer);
                 printf("current_tup: (%d, %d, %d)\n", std::get<0>(current_tup), std::get<1>(current_tup), std::get<2>(current_tup));
                 std::cout << open_list.size() << ' ' << open_set.size() << '\n';
@@ -101,7 +91,7 @@ std::vector<RouteEdge> Router::find_path(const std::pair<int, int>& start,
                 if (down_scaled) {
                     // Decay the scaling factors to prevent excessive oscillation
                     down_scaled = false;
-                    up = std::max(1.0 + (up - 1.0) * 0.9, 1.2);
+                    up = std::max(1.0 + (up - 1.0) * 0.9, 1.05);
                 }
                 printf("up: %f\n", up);
                 rescaled = true;
