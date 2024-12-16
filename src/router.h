@@ -73,17 +73,24 @@ private:
     double calculate_via_cost(const std::vector<RouteEdge>& path);
     
     // Grid-related methods
+
+    std::vector<RouteEdge> reconstruct_path(RouteNode* node, int start_x, int start_y);
     bool is_valid_move(int x, int y, int layer);
     int get_direction(int from_x, int from_y, int to_x, int to_y);
     int get_opposite_direction(int dir);
+    int grid_hash(int x, int y, int layer);
     // Heuristic calculation
-    double calculate_heuristic(int x1, int y1, int x2, int y2);
+    int calculate_heuristic(int x1, int y1, int x2, int y2);
     double calculate_g_cost(int from_x, int from_y, int from_layer, int to_x, int to_y, int to_layer);
     double recorded_total_cost;
     std::vector<double> recorded_costs;
     double max_run_time_per_bump;
     double h_scale;
-    bool first_net;
+    double up, down;
+    double average_net_time_ms;
+    double num_nodes_per_ms;
+    double remaining_time_ms;
+    bool rescaled;
     // Tracking routed nets and their edges
     std::vector<std::vector<RouteEdge>> routed_nets;
     // Grid tracking for overflow calculation

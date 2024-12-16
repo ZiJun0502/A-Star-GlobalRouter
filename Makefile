@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wno-unused-variable -Wno-unused-parameter -g -O0 -MMD -MP -I/usr/include/boost
+CXXFLAGS = -std=c++11 -Wall -Wno-unused-variable -Wno-unused-parameter -g -Ofast -MMD -MP -I/usr/include/boost
 # LDFLAGS = -lboost_system -lboost_filesystem
 
 # Folders
