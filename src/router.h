@@ -8,18 +8,24 @@
 #include <cmath>
 #include <algorithm>
 #include <float.h>
+#include <string.h>
 #include <chrono>
+#include <pthread.h>
+#include <mutex>
 
 #include "globals.h"
 #include "bidirectional_astar.h"
 #include "route_node.h"
-
+#include "thread_args.h"
+#include "thread_pool.h"
+// Thread argument structure
 class Router {
 public:
     Router();
+    ~Router();
     
     // Route all nets between chips
-    bool route_nets();
+    std::vector<std::vector<RouteEdge>> route_nets();
     
     // Output routing results
     void output_routing_results(std::ofstream& output_file);
@@ -65,9 +71,14 @@ public:
     double remaining_time_ms;
     bool rescaled;
     // Tracking routed nets and their edges
-    std::vector<std::vector<RouteEdge>> routed_nets;
+    static std::vector<std::vector<RouteEdge>> routed_nets;
     // Grid tracking for overflow calculation
     static std::array<std::vector<std::vector<int>>, 4> layer_net_count;
-};
+    static const int num_locks = 128;
+    pthread_rwlock_t layer_net_count_rwlock[num_locks];
+    inline int get_lock_index(int i, int j) {
+        return (i * routing_area_gwidth + j) % num_locks;
+    }
 
+};
 #endif // ROUTER_H

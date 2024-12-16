@@ -169,7 +169,12 @@ double BidirectionalAStar::calculate_g_cost(int from_x, int from_y, int from_lay
     move_cost = (from_layer != to_layer) ? (layer_costs[from_layer][from_y][from_x] + layer_costs[to_layer][from_y][from_x]) / 2 
                                                             :layer_costs[from_layer][from_y][from_x];
     net_via_cost = (from_layer != to_layer) * via_cost;
+    if (pthread_rwlock_rdlock(layer_net_count_rwlock) != 0) {
+        std::cerr << "Failed to acquire read lock" << std::endl;
+        return -1;
+    }
     ov_cost = (Router::layer_net_count[dir][to_y][to_x] > edge_capacities[dir][to_y][to_x]) ? gcell_cost_max : 0;
+    pthread_rwlock_unlock(layer_net_count_rwlock);
 
     double g_cost = alpha * wire_len + beta * ov_cost +  _gamma * move_cost + delta * net_via_cost;
     return g_cost;
@@ -198,8 +203,13 @@ std::vector<RouteEdge> BidirectionalAStar::reconstruct_path(RouteNode* node, int
     while (trace->parent) {
         bool turn = (trace->layer != trace->parent->layer);
         int dir = get_direction(trace->parent->x, trace->parent->y, trace->x, trace->y);
+        if (pthread_rwlock_wrlock(layer_net_count_rwlock) != 0) {
+            std::cerr << "Failed to acquire write lock" << std::endl;
+            return std::vector<RouteEdge>();
+        }
         Router::layer_net_count[dir][trace->y][trace->x]++;
         Router::layer_net_count[get_opposite_direction(dir)][trace->parent->y][trace->parent->x]++;
+        pthread_rwlock_unlock(layer_net_count_rwlock);
         // Merge the edges by only pushing the edge when met a turn.
         // printf("Node: (%d, %d, %d)\n", trace->x, trace->y, trace->layer);
         // printf("Parent: (%d, %d, %d)\n", trace->parent->x, trace->parent->y, trace->parent->layer);

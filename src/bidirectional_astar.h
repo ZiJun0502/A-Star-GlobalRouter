@@ -10,7 +10,6 @@
 #include <algorithm>
 
 #include "globals.h"
-#include "router.h"
 #include "route_node.h"
 
 class BidirectionalAStar {
@@ -25,6 +24,7 @@ public:
 
     // Reset the state of the algorithm
     void reset();
+    pthread_rwlock_t* layer_net_count_rwlock;
 
 private:
     // Internal state variables for A* algorithm
@@ -67,6 +67,9 @@ private:
     unsigned long long num_nodes_per_ms;
     double max_run_time_per_bump;
     double remaining_time_ms;
+
+
 };
 
+#include "router.h"
 #endif // BIDIRECTIONAL_ASTAR_H
