@@ -7,48 +7,12 @@
 #include <limits>
 #include <cmath>
 #include <algorithm>
-
-#include <boost/functional/hash.hpp>
+#include <float.h>
+#include <chrono>
 
 #include "globals.h"
-#include "hash_tuple.h"
-
-
-struct RouteNode {
-    int x;
-    int y;
-    int layer; // 0 for M1, 1 for M2
-    double f_cost; // Total estimated cost
-    double g_cost; // Cost from start
-    double h_cost; // Heuristic cost to goal
-    RouteNode* parent;
-
-    RouteNode(int x, int y, int layer, double f = 0, double g = 0, double h = 0, RouteNode* p = nullptr)
-        : x(x), y(y), layer(layer), f_cost(f), g_cost(g), h_cost(h), parent(p) {}
-
-    // Comparison for priority queue
-    bool operator>(const RouteNode& other) const {
-        return f_cost > other.f_cost;
-    }
-    bool operator<(const RouteNode& other) const { return f_cost < other.f_cost; }
-};
-struct CompareRouteNode {
-    bool operator()(const RouteNode* lhs, const RouteNode* rhs) const {
-        if (lhs->f_cost != rhs->f_cost) 
-            return lhs->f_cost < rhs->f_cost;
-        if (lhs->x != rhs->x) 
-            return lhs->x < rhs->x;
-        if (lhs->y != rhs->y) 
-            return lhs->y < rhs->y;
-        return lhs->layer < rhs->layer;
-    }
-};
-
-struct RouteEdge {
-    int start_x, start_y, end_x, end_y;
-    int layer;
-    bool is_via;
-};
+#include "bidirectional_astar.h"
+#include "route_node.h"
 
 class Router {
 public:
@@ -59,11 +23,20 @@ public:
     
     // Output routing results
     void output_routing_results(std::ofstream& output_file);
-
-private:
+    
     // A* path finding
     std::vector<RouteEdge> find_path(const std::pair<int, int>& start, 
                                      const std::pair<int, int>& end);
+    void expand_frontier(RouteNode* current, 
+                             std::set<RouteNode*, CompareRouteNode>& open_list, 
+                             std::unordered_set<int>& closed_set, 
+                             std::unordered_map<int, RouteNode*>& allocated_map, 
+                             std::unordered_map<int, double>& g_map, 
+                             int target_x, int target_y,
+                             std::set<RouteNode*, CompareRouteNode>& other_open_list,
+                             std::unordered_set<int>& other_closed_set,
+                             std::unordered_map<int, RouteNode*>& other_allocated_map,
+                             std::unordered_map<int, double>& other_g_map);
     
     // Cost calculation methods
     double calculate_cost(const std::vector<std::vector<RouteEdge>>& routed_net);
@@ -94,7 +67,7 @@ private:
     // Tracking routed nets and their edges
     std::vector<std::vector<RouteEdge>> routed_nets;
     // Grid tracking for overflow calculation
-    std::array<std::vector<std::vector<int>>, 4> layer_net_count;
+    static std::array<std::vector<std::vector<int>>, 4> layer_net_count;
 };
 
 #endif // ROUTER_H

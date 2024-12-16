@@ -6,7 +6,7 @@
 int main(int argc, char *argv[]) {
     auto start = std::chrono::steady_clock::now();
     read_input(argc, argv);
-    print_globals();
+    // print_globals();
     // printf("Hello\n");
     Router router;
     router.route_nets();
