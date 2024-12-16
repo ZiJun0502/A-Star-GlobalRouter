@@ -1,16 +1,12 @@
 #include "bidirectional_astar.h"
 
-BidirectionalAStar::BidirectionalAStar() {}
+BidirectionalAStar::BidirectionalAStar() {
+    h_scale = 1.0;
+}
 
 BidirectionalAStar::~BidirectionalAStar() {}
 
 void BidirectionalAStar::reset() {
-    for (auto& p : allocated_map_start) {
-        delete p.second;
-    }
-    for (auto& p : allocated_map_end) {
-        delete p.second;
-    }
     closed_set_start.clear();
     closed_set_end.clear();
     allocated_map_start.clear();
@@ -26,6 +22,7 @@ void BidirectionalAStar::reset() {
 
 std::vector<RouteEdge> BidirectionalAStar::find_path(const std::pair<int, int>& start,
                                                      const std::pair<int, int>& end) {
+
     int start_x = start.first / grid_width;
     int start_y = start.second / grid_height;
     int end_x = end.first / grid_width;
@@ -33,7 +30,6 @@ std::vector<RouteEdge> BidirectionalAStar::find_path(const std::pair<int, int>& 
 
     // Set up initial state
     reset();
-    max_nodes_allowed = std::max(max_run_time_per_bump * num_nodes_per_ms, 4.0 * (routing_area_gheight + routing_area_gwidth));
 
     // Initialize start node
     RouteNode* start_node = new RouteNode(start_x, start_y, 0, 0, 0, calculate_heuristic(start_x, start_y, end_x, end_y));
@@ -51,7 +47,7 @@ std::vector<RouteEdge> BidirectionalAStar::find_path(const std::pair<int, int>& 
     double min_g = DBL_MAX;
     RouteNode* min_node = nullptr;
 
-    while (!path_found) {
+    while (true) {
         // Perform bidirectional search here
         // Start search direction
         if (!open_list_start.empty()) {
@@ -71,10 +67,16 @@ std::vector<RouteEdge> BidirectionalAStar::find_path(const std::pair<int, int>& 
 
             expand(end_node, open_list_end,   open_set_end,   closed_set_end,   allocated_map_end,   g_map_end, end_x, end_y, min_g, &min_node,
                                    open_list_start, open_set_start, closed_set_start, allocated_map_start, g_map_start);
-            // if (node != nullptr) {
-            //     // printf("Path found from end\n");
-            //     break;
-            // }
+        }
+        traversed_nodes += 2;
+        if (traversed_nodes > max_nodes_allowed) {
+            for (auto& p : allocated_map_start) {
+                delete p.second;
+            }
+            for (auto& p : allocated_map_end) {
+                delete p.second;
+            }
+            return std::vector<RouteEdge>();
         }
         // printf("min_g: %f, node: %p\n", min_g, min_node);
         if (start_node->g_cost + end_node->g_cost >= min_g)
@@ -93,10 +95,14 @@ std::vector<RouteEdge> BidirectionalAStar::find_path(const std::pair<int, int>& 
     if (last_edge.layer != 0) {
         path_end.emplace_back(last_edge.end_x, last_edge.end_y, last_edge.end_x, last_edge.end_y, 0, true);
     }
-    // std::cout << path_start << '\n';
-    // std::cout << path_end << '\n';
     path_start.insert(path_start.end(), path_end.begin(), path_end.end());
-    // std::cout << path_start;
+
+    for (auto& p : allocated_map_start) {
+        delete p.second;
+    }
+    for (auto& p : allocated_map_end) {
+        delete p.second;
+    }
     return path_start;
 }
 
@@ -126,7 +132,7 @@ void BidirectionalAStar::expand(RouteNode* current,
 
         // Calculate costs
         double g_cost = current->g_cost + calculate_g_cost(current->x, current->y, current->layer, new_x, new_y, target_layer);
-        double h_cost = calculate_heuristic(new_x, new_y, target_x, target_y);
+        double h_cost = h_scale * calculate_heuristic(new_x, new_y, target_x, target_y);
         double f_cost = g_cost + h_cost;
 
         if (g_map.find(neighbor_hash) == g_map.end() || g_cost < g_map[neighbor_hash]) {
@@ -201,14 +207,14 @@ std::vector<RouteEdge> BidirectionalAStar::reconstruct_path(RouteNode* node, int
         Router::layer_net_count[dir][trace->y][trace->x]++;
         Router::layer_net_count[get_opposite_direction(dir)][trace->parent->y][trace->parent->x]++;
         // Merge the edges by only pushing the edge when met a turn.
-        // printf("Node: (%d, %d, %d)\n", trace->x, trace->y, trace->layer);
-        // printf("Parent: (%d, %d, %d)\n", trace->parent->x, trace->parent->y, trace->parent->layer);
         if (turn || (trace->parent->x == start_x && trace->parent->y == start_y)) {
             // printf("Push\n");
-            if (reversed) {
-                path.emplace_back(end_x, end_y, trace->parent->x, trace->parent->y, trace->layer, next_is_via);
-            } else {
-                path.emplace_back(trace->parent->x, trace->parent->y, end_x, end_y, trace->layer, trace->layer != trace->parent->layer);
+            if (!(end_x == trace->parent->x && end_y == trace->parent->y)) {
+                if (reversed) {
+                    path.emplace_back(end_x, end_y, trace->parent->x, trace->parent->y, trace->layer, next_is_via);
+                } else {
+                    path.emplace_back(trace->parent->x, trace->parent->y, end_x, end_y, trace->layer, trace->layer != trace->parent->layer);
+                }
             }
             end_x = trace->parent->x;
             end_y = trace->parent->y;

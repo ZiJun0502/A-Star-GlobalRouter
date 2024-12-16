@@ -5,37 +5,65 @@ Router::Router() {
     Router::layer_net_count[1] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
     Router::layer_net_count[2] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
     Router::layer_net_count[3] = std::vector<std::vector<int>>(routing_area_gheight, std::vector<int>(routing_area_gwidth, 0));
-    
-    max_run_time_per_bump = 400000 / (chips[0].bumps.size() - 1);
-    num_nodes_per_ms = 500;
-    h_scale = 1.0;
-    up = 2.0, down = 0.8;
-    rescaled = false;
 }
 
 
 bool Router::route_nets() {
-    remaining_time_ms = 400000;
     // Route from each bump of chip[0] to each bump of chip[1]
+    BidirectionalAStar astar;
+    double remaining_time_ms = 100000;
+    double num_nodes_per_ms = 500;
+    double avg_traversed_nodes = 4 * routing_area_gheight + routing_area_gwidth;
+    double up = 2.0, down = 0.8;
+    double max_runtime_per_bump = 400000 / (chips[0].bumps.size() - 1);
+    bool rescaled = false;
     for (int i = 1; i < chips[0].bumps.size(); ++i) {
-        BidirectionalAStar astar;
-        max_run_time_per_bump = remaining_time_ms / (chips[0].bumps.size() - i);
         std::pair<int, int> start = {chips[0].x + chips[0].bumps[i].first, chips[0].y + chips[0].bumps[i].second};
         std::pair<int, int> end = {chips[1].x + chips[1].bumps[i].first, chips[1].y + chips[1].bumps[i].second};
         
         std::cout << "Finding path for bump " << i << '\n'; 
-        auto start_time = std::chrono::steady_clock::now();
-        std::vector<RouteEdge> net_path = astar.find_path(start, end);
-        auto end_time = std::chrono::steady_clock::now();
-        std::chrono::duration<double> duration = end_time - start_time;
-        std::cout << "Time to route bump " << i << ": " << duration.count() << " seconds\n";
-        
-        if (!net_path.empty()) {
-            routed_nets.push_back(net_path);
-        } else {
-            // Path finding failed
-            return false;
+        auto bump_start_time = std::chrono::steady_clock::now();
+        std::vector<RouteEdge> net_path;
+        while(true) {
+            // set runtime constraint for A*;
+            max_runtime_per_bump = remaining_time_ms / (chips[0].bumps.size() - i);
+            astar.max_nodes_allowed = (unsigned long long) std::max(max_runtime_per_bump * num_nodes_per_ms, (double) 4 * routing_area_gheight + routing_area_gwidth);
+
+            auto start_time = std::chrono::steady_clock::now();
+            net_path = astar.find_path(start, end);
+            if (i == 17) {
+                std::cout << net_path;
+            }
+            auto end_time = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::milli> duration = end_time - start_time;
+
+            remaining_time_ms -= duration.count();
+            avg_traversed_nodes = 0.3 * astar.traversed_nodes + (1 - 0.3) * avg_traversed_nodes;
+            // unable to find path within limited time, upscale h
+            if (net_path.empty()) {
+                up = std::max(1.0 + (up - 1.0) * 0.9, 1.4);
+                rescaled = true;
+                astar.h_scale *= up;
+                printf("\n\nRemaining time: %fms, duration: %f\n", remaining_time_ms, duration.count());
+                printf("Max time per bump: %f, Max allowed nodes: %llu\n", max_runtime_per_bump, astar.max_nodes_allowed);
+                printf("h_scale: %f, Traversed: %llu, Nodes per ms: %f\n\n", astar.h_scale, astar.traversed_nodes, num_nodes_per_ms);
+            } else {
+                if (rescaled && avg_traversed_nodes < astar.max_nodes_allowed * 0.1) {
+                    // Continue scaling down
+                    down = std::min(1.0 - (1.0 - down) * 0.9, 0.95);
+                    astar.h_scale *= down;
+                }
+                double cur_num_nodes_per_ms = (double) astar.traversed_nodes / duration.count();
+                num_nodes_per_ms = 0.3 * cur_num_nodes_per_ms + (1 - 0.3) * num_nodes_per_ms;
+                printf("Remaining time: %fms, duration: %f\n", remaining_time_ms, duration.count());
+                printf("h_scale: %f, Traversed: %llu, Nodes per ms: %f\n\n", astar.h_scale, astar.traversed_nodes, num_nodes_per_ms);
+                break;
+            }
         }
+        auto bump_end_time = std::chrono::steady_clock::now();
+        auto bump_duration = std::chrono::duration_cast<std::chrono::milliseconds>(bump_end_time - bump_start_time);
+        // std::cout << "Time to route bump " << i << ": " << bump_duration.count() << " seconds\n";
+        routed_nets.push_back(net_path);
     }
     return true;
 }

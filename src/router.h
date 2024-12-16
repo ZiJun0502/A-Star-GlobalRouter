@@ -57,13 +57,6 @@ public:
     double calculate_g_cost(int from_x, int from_y, int from_layer, int to_x, int to_y, int to_layer);
     double recorded_total_cost;
     std::vector<double> recorded_costs;
-    double max_run_time_per_bump;
-    double h_scale;
-    double up, down;
-    double average_net_time_ms;
-    double num_nodes_per_ms;
-    double remaining_time_ms;
-    bool rescaled;
     // Tracking routed nets and their edges
     std::vector<std::vector<RouteEdge>> routed_nets;
     // Grid tracking for overflow calculation

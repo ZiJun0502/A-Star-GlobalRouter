@@ -26,6 +26,10 @@ public:
     // Reset the state of the algorithm
     void reset();
 
+    double h_scale; 
+    unsigned long long max_nodes_allowed;
+    unsigned long long traversed_nodes;
+
 private:
     // Internal state variables for A* algorithm
     std::set<RouteNode*, CompareRouteNode> open_list_start;
@@ -60,13 +64,6 @@ private:
     int get_direction(int x1, int y1, int x2, int y2);
     int get_opposite_direction(int dir);
 
-    // Configuration or additional parameters (e.g., grid size, scaling)
-    double h_scale = 1.0; // Heuristic scale
-    unsigned long long max_nodes_allowed;
-    unsigned long long traversed_nodes;
-    unsigned long long num_nodes_per_ms;
-    double max_run_time_per_bump;
-    double remaining_time_ms;
 };
 
 #endif // BIDIRECTIONAL_ASTAR_H
